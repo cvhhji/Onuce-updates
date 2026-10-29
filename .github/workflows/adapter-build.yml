@@ -115,7 +115,7 @@ jobs:
           GH_TOKEN: ${{ github.token }}
           ONUCE_SOURCE_DEPLOY_KEY: ${{ secrets.ONUCE_SOURCE_DEPLOY_KEY }}
         run: python3 ci/push_adapter_branch.py
-      - name: Publish immutable modules and switch the catalog pointer last
+      - name: Publish validated latest modules and prune obsolete attachments
         env:
           GH_TOKEN: ${{ github.token }}
         run: python3 ci/publish_adapters.py --directory out/distribution
@@ -129,10 +129,6 @@ jobs:
         with:
           name: Onuce-Automatic-adapters-${{ github.run_id }}
           path: |
-            out/proposal/upstream-report.json
-            out/private/report.json
-            out/source-commit.txt
-            out/distribution/
-            out/kernels/*-build.log
+            out/distribution/*.ko
           if-no-files-found: error
           retention-days: 30
