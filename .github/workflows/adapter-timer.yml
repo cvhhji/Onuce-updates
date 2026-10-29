@@ -18,4 +18,4 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
-          gh workflow run adapter-build.yml --repo cvhhji/Onuce-updates
+          gh workflow run adapter-build.yml --repo cvhhji/Onuce-updates --ref main
