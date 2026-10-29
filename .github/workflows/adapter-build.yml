@@ -55,7 +55,7 @@ jobs:
           with open(os.environ['GITHUB_OUTPUT'], 'a') as output:
               output.write('changed=' + str(report['status'] == 'update').lower() + '\n')
           PY
-      - name: Stage credential-free build inputs for changed public managers only
+      - name: Stage credential-free kernel inputs for changed managers only
         if: steps.upstream.outputs.changed == 'true' || steps.private.outputs.changed == 'true'
         run: |
           python3 - <<'PY'
