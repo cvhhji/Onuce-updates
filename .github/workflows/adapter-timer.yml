@@ -1,0 +1,21 @@
+name: Check upstream managers every 8 hours
+on:
+  schedule:
+    - cron: '0 */8 * * *'
+  workflow_dispatch:
+permissions:
+  contents: read
+  actions: write
+concurrency:
+  group: onuce-adapter-timer
+  cancel-in-progress: false
+jobs:
+  dispatch:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Trigger the private builder that reads the independent source branch
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh workflow run adapter-build.yml --repo cvhhji/Onuce-updates
