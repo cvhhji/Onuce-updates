@@ -34,8 +34,7 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
-          mkdir -p out/proposal out/baseline
-          cp payload/*.ko payload/*-provenance.json out/baseline/
+          mkdir -p out/proposal out/kernels
           python3 ci/upstream_managers.py --output out/proposal --apksigner "$ANDROID_HOME/build-tools/37.0.0/apksigner"
           python3 - <<'PY'
           import json, os
@@ -43,8 +42,21 @@ jobs:
           with open(os.environ['GITHUB_OUTPUT'], 'a') as output:
               output.write('changed=' + str(any(item['status'] == 'update' for item in report)).lower() + '\n')
           PY
+      - name: Inspect private KowSU production source tags
+        id: private
+        env:
+          GH_TOKEN: ${{ github.token }}
+          ONUCE_KOWSU_DEPLOY_KEY: ${{ secrets.ONUCE_KOWSU_DEPLOY_KEY }}
+        run: |
+          python3 ci/private_manager.py --output out/private
+          python3 - <<'PY'
+          import json, os
+          report = json.load(open('out/private/report.json'))
+          with open(os.environ['GITHUB_OUTPUT'], 'a') as output:
+              output.write('changed=' + str(report['status'] == 'update').lower() + '\n')
+          PY
       - name: Stage credential-free build inputs for changed public managers only
-        if: steps.upstream.outputs.changed == 'true'
+        if: steps.upstream.outputs.changed == 'true' || steps.private.outputs.changed == 'true'
         run: |
           python3 - <<'PY'
           import json, pathlib, shutil
@@ -59,36 +71,44 @@ jobs:
           entries = [item for item in json.load(open('out/proposal/candidate-kernels.json')) if item['key'] in changed]
           if any('archive' in item for item in entries):
               raise ValueError('Private archived source requires manual adaptation')
+          if json.load(open('out/private/report.json'))['status'] == 'update':
+              entries.append(json.load(open('out/private/kernel.json')))
+              (target / 'kernel/vendor').mkdir()
+              shutil.copyfile('out/private/kowsu.tar.gz', target / 'kernel/vendor/kowsu.tar.gz')
           (target / 'kernel/backends.json').write_text(json.dumps(entries, indent=2) + '\n')
           PY
       - name: Free kernel toolchain space
-        if: steps.upstream.outputs.changed == 'true'
+        if: steps.upstream.outputs.changed == 'true' || steps.private.outputs.changed == 'true'
         run: sudo rm -rf -- /usr/local/lib/android /usr/share/dotnet /opt/ghc /opt/hostedtoolcache/CodeQL
       - name: Fingerprint toolchain
-        if: steps.upstream.outputs.changed == 'true'
+        if: steps.upstream.outputs.changed == 'true' || steps.private.outputs.changed == 'true'
         id: toolchain
         run: echo "hash=$(docker run --rm "$ONUCE_KERNEL_IMAGE" clang --version | sha256sum | cut -d' ' -f1)" >> "$GITHUB_OUTPUT"
       - uses: actions/cache@v5
-        if: steps.upstream.outputs.changed == 'true'
+        if: steps.upstream.outputs.changed == 'true' || steps.private.outputs.changed == 'true'
         with:
           path: |
             /tmp/onuce-gki
             /tmp/onuce-kdir
           key: onuce-gki-f957accaf563-${{ steps.toolchain.outputs.hash }}-${{ hashFiles('kernel/build.sh', 'kernel/checks/**') }}
       - name: Compile matching device modules in a credential-free container
-        if: steps.upstream.outputs.changed == 'true'
+        if: steps.upstream.outputs.changed == 'true' || steps.private.outputs.changed == 'true'
+        env:
+          PUBLIC_CHANGED: ${{ steps.upstream.outputs.changed }}
         run: |
           mkdir -p /tmp/onuce-gki /tmp/onuce-kdir out/kernels
           docker run --rm -e GIT_CONFIG_COUNT=1 -e GIT_CONFIG_KEY_0=safe.directory -e GIT_CONFIG_VALUE_0=/tmp/onuce-gki \
             -v "$GITHUB_WORKSPACE/out/build-input:/onuce-input:ro" -v "$GITHUB_WORKSPACE/out/kernels:/onuce-out" \
             -v /tmp/onuce-gki:/tmp/onuce-gki -v /tmp/onuce-kdir:/tmp/onuce-kdir \
             -w /onuce-input "$ONUCE_KERNEL_IMAGE" bash kernel/build.sh /onuce-input /onuce-out
-          python3 ci/accept_manager_update.py --proposal out/proposal --built out/kernels
+          if [ "$PUBLIC_CHANGED" = true ]; then
+            python3 ci/accept_manager_update.py --proposal out/proposal --built out/kernels
+          fi
       - name: Validate modules and build the feed
         run: |
           python3 ci/verify.py
           python3 -m unittest discover -s ci/tests -v
-          python3 ci/distribution.py --modules out/baseline payload --output out/distribution
+          python3 ci/distribution.py --modules payload out/kernels --output out/distribution
       - name: Save verified payloads to the independent source branch only
         if: steps.upstream.outputs.changed == 'true'
         env:
@@ -110,6 +130,7 @@ jobs:
           name: Onuce-Automatic-adapters-${{ github.run_id }}
           path: |
             out/proposal/upstream-report.json
+            out/private/report.json
             out/source-commit.txt
             out/distribution/
             out/kernels/*-build.log
