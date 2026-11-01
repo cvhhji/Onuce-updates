@@ -1,7 +1,7 @@
-name: Check upstream managers every 8 hours
+name: Check upstream managers every 4 hours
 on:
   schedule:
-    - cron: '0 */8 * * *'
+    - cron: '0 */4 * * *'
   workflow_dispatch:
 permissions:
   contents: read
