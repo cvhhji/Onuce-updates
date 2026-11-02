@@ -1,8 +1,14 @@
 name: Check upstream managers every 4 hours
 on:
   schedule:
-    - cron: '0 */4 * * *'
+    - cron: '17 */4 * * *'
   workflow_dispatch:
+    inputs:
+      run_adapter_now:
+        description: '立即触发管理器模块检查和更新'
+        type: boolean
+        required: true
+        default: true
 permissions:
   contents: read
   actions: write
@@ -11,6 +17,7 @@ concurrency:
   cancel-in-progress: false
 jobs:
   dispatch:
+    if: ${{ github.event_name == 'schedule' || inputs.run_adapter_now }}
     runs-on: ubuntu-latest
     timeout-minutes: 5
     steps:
